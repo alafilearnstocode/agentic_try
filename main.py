@@ -138,7 +138,7 @@ class DQNAgent:
             self.epsilon *= self.epsilon_decay
         self.update_target_model()
 
-def train_agent(data, episodes, batch_size):
+def train_agent(data, episodes, batch_size, progress_bar=None):
     env = Environment(data)
     state_size = 4
     action_size = len(CAN)
@@ -156,6 +156,8 @@ def train_agent(data, episodes, batch_size):
             total_reward += reward
         agent.replay(batch_size)
         total_rewards.append(total_reward)
+        if progress_bar:
+            progress_bar.progress((e + 1) / episodes)
     return agent, total_rewards
 
 def test_agent(agent, data):
@@ -182,13 +184,15 @@ st.title("Reinforcement Learning Stock Trader 📈")
 symbol = st.sidebar.text_input("Stock Symbol", value="NVDA")
 start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2022-01-01"))
 end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("2025-07-31"))
-episodes = st.sidebar.slider("Episodes", min_value=10, max_value=1000, value=500, step=10)
+episodes = st.sidebar.slider("Episodes", min_value=10, max_value=1000, value=20, step=10)
 batch_size = st.sidebar.slider("Batch Size", min_value=8, max_value=128, value=32, step=8)
+st.sidebar.info("Warning: Higher episodes take longer to train.")
 
 if st.sidebar.button("Run Training"):
     with st.spinner("Downloading data and training the agent..."):
         data = load_data(symbol, start_date, end_date)
-        agent, total_rewards = train_agent(data, episodes, batch_size)
+        progress_bar = st.progress(0)
+        agent, total_rewards = train_agent(data, episodes, batch_size, progress_bar)
     st.success("Training complete!")
 
     fig, ax = plt.subplots()
