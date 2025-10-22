@@ -179,7 +179,7 @@ def test_agent(agent, data):
     results_df = pd.DataFrame(records)
     return final_balance, profit, results_df
 
-st.title("Reinforcement Learning Stock Trader 📈")
+st.title("DQN Agent")
 
 symbol = st.sidebar.text_input("Stock Symbol", value="NVDA")
 start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2022-01-01"))
