@@ -2,6 +2,9 @@
 
 This project is a Streamlit app showcasing an AI trading agent built with reinforcement learning (Deep Q-Networks). It allows users to train and test a reinforcement learning agent to trade stocks based on historical data.
 
+## Demo
+https://agentictry-jhyn5hgrzcxquc5tqtzum8.streamlit.app/
+
 ## Features
 
 - Choose stock symbol to trade
