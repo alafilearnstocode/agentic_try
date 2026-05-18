@@ -20,18 +20,23 @@ def load_data(symbol, start_date, end_date):
     data.dropna(inplace=True)
     data.reset_index(inplace=True, drop=True)
     scaler = StandardScaler()
-    data[['Close', 'SMA_5', 'SMA_20', 'Return']] = scaler.fit_transform(data[['Close', 'SMA_5', 'SMA_20', 'Return']])
+    data[['Close', 'SMA_5', 'SMA_20', 'Return']] = scaler.fit_transform(
+        data[['Close', 'SMA_5', 'SMA_20', 'Return']]
+    )
+    # this is a recent error encountered, so multiIndex columns if present (yfinance sometimes returns them)
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(0)
     return data
 
 def get_state(data, index):
     return np.array([
         float(data.loc[index, 'Close']),
-        float(data.loc[index, 'SMA_5'].iloc[0]),
-        float(data.loc[index, 'SMA_20'].iloc[0]),
-        float(data.loc[index, 'Return'].iloc[0])
+        float(data.loc[index, 'SMA_5']),
+        float(data.loc[index, 'SMA_20']),
+        float(data.loc[index, 'Return'])
     ])
 
-class Environment: # the agent that interacts with the environment
+class Environment:
     def __init__(self, data):
         self.data = data
         self.initial_balance = 10000
@@ -44,55 +49,57 @@ class Environment: # the agent that interacts with the environment
         self.shares_held = 0
         self.index = 0
         return get_state(self.data, self.index)
-    
+
     def step(self, action):
         price = float(self.data.loc[self.index, 'Close'])
         reward = 0
 
         if action == 1 and self.balance >= price:
-            shares_bought = max(1, int((0.1 * self.balance) // price))  # buy up to 10% of balance
+            shares_bought = max(1, int((0.1 * self.balance) // price))
             self.shares_held += shares_bought
             self.balance -= shares_bought * price
         elif action == 2 and self.shares_held > 0:
-            shares_sold = max(1, int(0.1 * self.shares_held))  # sell 10% of holdings
+            shares_sold = max(1, int(0.1 * self.shares_held))
             self.balance += shares_sold * price
             self.shares_held -= shares_sold
-        
+
         if self.index > 0:
             prev_price = float(self.data.loc[self.index - 1, 'Close'])
             prev_value = self.balance + self.shares_held * prev_price
             curr_value = self.balance + self.shares_held * price
             reward = curr_value - prev_value
-        
+
         self.index += 1
         done = self.index >= len(self.data) - 1
 
         if done:
-            total_value = self.balance + self.shares_held * price # revisit
-            reward = total_value - (self.balance + self.shares_held * prev_price)
+            total_value = self.balance + self.shares_held * price
+            reward = total_value - self.initial_balance
 
         next_state = get_state(self.data, self.index) if not done else None
         return next_state, reward, done, {}
-    
-class DQN(nn.Module): # the decision making neural network
+
+
+class DQN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(DQN, self).__init__()
         self.fc1 = nn.Linear(input_dim, 64)
         self.fc2 = nn.Linear(64, 64)
         self.fc3 = nn.Linear(64, output_dim)
-    
+
     def forward(self, x):
         x = torch.relu(self.fc1(x))
         x = torch.relu(self.fc2(x))
         return self.fc3(x)
-            
+
+
 class DQNAgent:
     def __init__(self, state_size, action_size):
         self.state_size = state_size
         self.action_size = action_size
         self.memory = deque(maxlen=2000)
-        self.gamma = 0.95 # valuing our future rewards
-        self.epsilon = 1.0 # random action
+        self.gamma = 0.95
+        self.epsilon = 1.0
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
         self.learning_rate = 0.001
@@ -100,14 +107,14 @@ class DQNAgent:
         self.target_model = DQN(state_size, action_size)
         self.update_target_model()
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
-        self.criterion = nn.MSELoss() # prediceted and the target value
-    
+        self.criterion = nn.MSELoss()
+
     def update_target_model(self):
         self.target_model.load_state_dict(self.model.state_dict())
-    
+
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
-    
+
     def act(self, state):
         if random.uniform(0, 1) < self.epsilon:
             return random.choice(list(CAN.keys()))
@@ -115,7 +122,7 @@ class DQNAgent:
         with torch.no_grad():
             q_values = self.model(state)
         return torch.argmax(q_values).item()
-    
+
     def replay(self, batch_size):
         if len(self.memory) < batch_size:
             return
@@ -137,6 +144,7 @@ class DQNAgent:
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
         self.update_target_model()
+
 
 def train_agent(data, episodes, batch_size, progress_bar=None):
     env = Environment(data)
@@ -160,6 +168,7 @@ def train_agent(data, episodes, batch_size, progress_bar=None):
             progress_bar.progress((e + 1) / episodes)
     return agent, total_rewards
 
+
 def test_agent(agent, data):
     test_env = Environment(data)
     state = test_env.reset()
@@ -174,12 +183,16 @@ def test_agent(agent, data):
             'Shares Held': test_env.shares_held
         })
         state = next_state if next_state is not None else state
-    final_balance = test_env.balance + test_env.shares_held * float(data.loc[test_env.index - 1, 'Close'].iloc[0])
+    final_price = float(data.loc[test_env.index - 1, 'Close'])
+    final_balance = test_env.balance + test_env.shares_held * final_price
     profit = final_balance - test_env.initial_balance
     results_df = pd.DataFrame(records)
     return final_balance, profit, results_df
 
-st.title("DQN Agent")
+
+
+
+st.title("DQN Stock Trading Agent")
 
 symbol = st.sidebar.text_input("Stock Symbol", value="NVDA")
 start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2022-01-01"))
